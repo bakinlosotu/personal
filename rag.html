@@ -1,0 +1,1684 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAG Simulator — Learn Retrieval Augmented Generation</title>
+
+<style>
+    * {
+        box-sizing: border-box;
+    }
+
+    :root {
+        --bg: #f5f7fb;
+        --surface: #ffffff;
+        --surface-2: #f8fafc;
+        --border: #e5e7eb;
+        --text: #172033;
+        --muted: #667085;
+        --purple: #6d5dfc;
+        --purple-light: #eeecff;
+        --blue: #2563eb;
+        --blue-light: #eaf2ff;
+        --green: #059669;
+        --green-light: #e8f8f2;
+        --orange: #ea580c;
+        --orange-light: #fff0e8;
+        --pink: #db2777;
+        --pink-light: #fdebf4;
+        --shadow: 0 10px 30px rgba(15, 23, 42, 0.07);
+    }
+
+    body {
+        margin: 0;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+    }
+
+    .app {
+        max-width: 1400px;
+        margin: auto;
+        padding: 28px;
+    }
+
+    /* HEADER */
+
+    header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 28px;
+        gap: 20px;
+    }
+
+    .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+    }
+
+    .logo {
+        width: 46px;
+        height: 46px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #6d5dfc, #4f46e5);
+        color: white;
+        display: grid;
+        place-items: center;
+        font-size: 22px;
+        font-weight: 800;
+        box-shadow: 0 8px 20px rgba(109, 93, 252, .25);
+    }
+
+    h1 {
+        margin: 0;
+        font-size: 22px;
+    }
+
+    .subtitle {
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 3px;
+    }
+
+    button {
+        border: 0;
+        border-radius: 10px;
+        padding: 10px 15px;
+        font-weight: 650;
+        cursor: pointer;
+        transition: .2s;
+    }
+
+    button:hover {
+        transform: translateY(-1px);
+    }
+
+    .btn-primary {
+        background: var(--purple);
+        color: white;
+    }
+
+    .btn-secondary {
+        background: white;
+        color: var(--text);
+        border: 1px solid var(--border);
+    }
+
+    /* PIPELINE */
+
+    .pipeline {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 20px;
+        box-shadow: var(--shadow);
+        margin-bottom: 24px;
+        overflow-x: auto;
+    }
+
+    .pipeline-title {
+        font-size: 12px;
+        font-weight: 750;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        margin-bottom: 16px;
+    }
+
+    .pipeline-flow {
+        display: flex;
+        align-items: center;
+        min-width: 950px;
+    }
+
+    .pipe-step {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        white-space: nowrap;
+    }
+
+    .pipe-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        font-size: 15px;
+    }
+
+    .pipe-label {
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .pipe-sub {
+        font-size: 10px;
+        color: var(--muted);
+    }
+
+    .arrow {
+        margin: 0 12px;
+        color: #a0a8b8;
+        font-size: 18px;
+    }
+
+    .ingest .pipe-icon {
+        background: var(--blue-light);
+        color: var(--blue);
+    }
+
+    .storage .pipe-icon {
+        background: var(--green-light);
+        color: var(--green);
+    }
+
+    .retrieval .pipe-icon {
+        background: var(--orange-light);
+        color: var(--orange);
+    }
+
+    .generation .pipe-icon {
+        background: var(--purple-light);
+        color: var(--purple);
+    }
+
+    /* MAIN GRID */
+
+    .grid {
+        display: grid;
+        grid-template-columns: 1fr 1.35fr;
+        gap: 22px;
+    }
+
+    @media(max-width: 950px) {
+        .grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+    }
+
+    .card-header {
+        padding: 18px 20px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .card-title {
+        font-size: 15px;
+        font-weight: 750;
+    }
+
+    .card-description {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 3px;
+    }
+
+    .card-body {
+        padding: 20px;
+    }
+
+    /* DOCUMENT */
+
+    textarea {
+        width: 100%;
+        min-height: 220px;
+        resize: vertical;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px;
+        font: inherit;
+        font-size: 13px;
+        line-height: 1.6;
+        outline: none;
+        background: var(--surface-2);
+    }
+
+    textarea:focus,
+    input:focus {
+        border-color: var(--purple);
+        box-shadow: 0 0 0 3px var(--purple-light);
+    }
+
+    .upload-box {
+        border: 1.5px dashed #c9ced8;
+        border-radius: 12px;
+        padding: 15px;
+        margin-bottom: 14px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+        cursor: pointer;
+    }
+
+    .upload-box:hover {
+        border-color: var(--purple);
+        background: var(--purple-light);
+    }
+
+    input[type=file] {
+        display: none;
+    }
+
+    .actions {
+        display: flex;
+        gap: 9px;
+        margin-top: 13px;
+        flex-wrap: wrap;
+    }
+
+    /* EXPLANATION */
+
+    .explanation {
+        background: var(--purple-light);
+        border-radius: 12px;
+        padding: 14px;
+        margin-top: 16px;
+        font-size: 12px;
+        line-height: 1.6;
+    }
+
+    .explanation strong {
+        color: #5145cd;
+    }
+
+    /* CHUNKS */
+
+    .chunk-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-height: 320px;
+        overflow-y: auto;
+    }
+
+    .chunk {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 13px;
+        background: var(--surface-2);
+    }
+
+    .chunk-top {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 7px;
+    }
+
+    .chunk-id {
+        font-size: 10px;
+        font-weight: 800;
+        color: var(--purple);
+        text-transform: uppercase;
+    }
+
+    .chunk-score {
+        font-size: 10px;
+        color: var(--green);
+        font-weight: 700;
+    }
+
+    .chunk-text {
+        font-size: 12px;
+        line-height: 1.55;
+        color: #465064;
+    }
+
+    /* EMBEDDINGS */
+
+    .embedding {
+        margin-top: 9px;
+        font-family: monospace;
+        font-size: 10px;
+        color: var(--muted);
+        background: #eef1f5;
+        padding: 7px;
+        border-radius: 7px;
+        overflow: hidden;
+        white-space: nowrap;
+    }
+
+    /* QUERY */
+
+    .query-box {
+        display: flex;
+        gap: 9px;
+    }
+
+    .query-box input {
+        flex: 1;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px;
+        font: inherit;
+        font-size: 13px;
+        outline: none;
+    }
+
+    /* STAGE */
+
+    .stage {
+        margin-top: 18px;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        overflow: hidden;
+    }
+
+    .stage-header {
+        padding: 13px 15px;
+        background: var(--surface-2);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 9px;
+    }
+
+    .stage-number {
+        width: 25px;
+        height: 25px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        background: var(--purple);
+        color: white;
+        font-size: 11px;
+        font-weight: 800;
+    }
+
+    .stage-name {
+        font-size: 12px;
+        font-weight: 750;
+    }
+
+    .stage-content {
+        padding: 15px;
+    }
+
+    /* LLM */
+
+    .llm-box {
+        border: 1px solid #d9d4ff;
+        background: linear-gradient(135deg, #faf9ff, #f3f1ff);
+        border-radius: 14px;
+        padding: 16px;
+    }
+
+    .llm-label {
+        color: var(--purple);
+        font-weight: 800;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        margin-bottom: 10px;
+    }
+
+    .context-block {
+        background: white;
+        border: 1px solid #e6e1ff;
+        padding: 10px;
+        border-radius: 9px;
+        margin-bottom: 8px;
+        font-size: 11px;
+        color: #50576a;
+        line-height: 1.5;
+    }
+
+    .answer {
+        background: var(--green-light);
+        border: 1px solid #bde9d8;
+        padding: 15px;
+        border-radius: 12px;
+        margin-top: 12px;
+        font-size: 13px;
+        line-height: 1.65;
+    }
+
+    .answer strong {
+        color: var(--green);
+    }
+
+    /* STATUS */
+
+    .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 8px;
+        border-radius: 20px;
+        font-size: 10px;
+        font-weight: 750;
+        background: var(--green-light);
+        color: var(--green);
+    }
+
+    .dot {
+        width: 6px;
+        height: 6px;
+        background: currentColor;
+        border-radius: 50%;
+    }
+
+    /* FOOTER */
+
+    .lesson {
+        margin-top: 22px;
+        background: #111827;
+        color: white;
+        border-radius: 18px;
+        padding: 22px;
+    }
+
+    .lesson h3 {
+        margin: 0 0 8px;
+        font-size: 15px;
+    }
+
+    .lesson p {
+        margin: 0;
+        color: #c8ced9;
+        font-size: 12px;
+        line-height: 1.7;
+    }
+
+    .highlight {
+        color: #b9b0ff;
+        font-weight: 750;
+    }
+
+    .hidden {
+        display: none;
+    }
+
+    .empty {
+        color: var(--muted);
+        font-size: 12px;
+        text-align: center;
+        padding: 25px;
+    }
+
+    .progress {
+        height: 5px;
+        background: #e9ebf0;
+        border-radius: 99px;
+        overflow: hidden;
+        margin-top: 12px;
+    }
+
+    .progress-bar {
+        width: 0%;
+        height: 100%;
+        background: var(--purple);
+        transition: width .5s;
+    }
+</style>
+</head>
+
+<body>
+
+<div class="app">
+
+    <!-- HEADER -->
+
+    <header>
+        <div class="brand">
+            <div class="logo">R</div>
+            <div>
+                <h1>RAG Simulator</h1>
+                <div class="subtitle">
+                    See what actually happens inside Retrieval-Augmented Generation
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <button class="btn-secondary" onclick="loadDemo()">Load demo</button>
+            <button class="btn-primary" onclick="runRAG()">Run RAG</button>
+        </div>
+    </header>
+
+
+    <!-- PIPELINE -->
+
+    <section class="pipeline">
+
+        <div class="pipeline-title">
+            The RAG pipeline
+        </div>
+
+        <div class="pipeline-flow">
+
+            <div class="pipe-step ingest">
+                <div class="pipe-icon">📄</div>
+                <div>
+                    <div class="pipe-label">Documents</div>
+                    <div class="pipe-sub">Source material</div>
+                </div>
+            </div>
+
+            <div class="arrow">→</div>
+
+            <div class="pipe-step ingest">
+                <div class="pipe-icon">✂️</div>
+                <div>
+                    <div class="pipe-label">Chunking</div>
+                    <div class="pipe-sub">Split text</div>
+                </div>
+            </div>
+
+            <div class="arrow">→</div>
+
+            <div class="pipe-step ingest">
+                <div class="pipe-icon">🔢</div>
+                <div>
+                    <div class="pipe-label">Embeddings</div>
+                    <div class="pipe-sub">Meaning → vectors</div>
+                </div>
+            </div>
+
+            <div class="arrow">→</div>
+
+            <div class="pipe-step storage">
+                <div class="pipe-icon">🗄️</div>
+                <div>
+                    <div class="pipe-label">Vector DB</div>
+                    <div class="pipe-sub">Store & search</div>
+                </div>
+            </div>
+
+            <div class="arrow">→</div>
+
+            <div class="pipe-step retrieval">
+                <div class="pipe-icon">🔍</div>
+                <div>
+                    <div class="pipe-label">Retrieve</div>
+                    <div class="pipe-sub">Find relevant chunks</div>
+                </div>
+            </div>
+
+            <div class="arrow">→</div>
+
+            <div class="pipe-step generation">
+                <div class="pipe-icon">🤖</div>
+                <div>
+                    <div class="pipe-label">LLM</div>
+                    <div class="pipe-sub">Generate answer</div>
+                </div>
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- MAIN -->
+
+    <div class="grid">
+
+        <!-- LEFT SIDE -->
+
+        <div>
+
+            <!-- DOCUMENT -->
+
+            <div class="card">
+
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">1. Add your knowledge</div>
+                        <div class="card-description">
+                            Give the RAG system some source material.
+                        </div>
+                    </div>
+
+                    <span class="status">
+                        <span class="dot"></span>
+                        Local simulation
+                    </span>
+                </div>
+
+                <div class="card-body">
+
+                    <label class="upload-box">
+                        📄 Click to upload a text file
+                        <input type="file" id="fileInput" accept=".txt,.md,.csv">
+                    </label>
+
+                    <textarea id="documentText"
+                        placeholder="Paste a document here...
+
+Example:
+Our supplier security policy requires all critical suppliers to notify the company of a security incident within 24 hours..."></textarea>
+
+                    <div class="actions">
+                        <button class="btn-primary" onclick="processDocument()">
+                            Process document
+                        </button>
+
+                        <button class="btn-secondary" onclick="clearDocument()">
+                            Clear
+                        </button>
+                    </div>
+
+                    <div class="explanation">
+                        <strong>What is happening?</strong><br>
+                        The document is being prepared for retrieval. The system will
+                        split it into smaller pieces called <strong>chunks</strong>.
+                        At this stage, the LLM does <strong>not</strong> need to learn
+                        or memorise the document.
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- CHUNKS -->
+
+            <div class="card" style="margin-top:22px;">
+
+                <div class="card-header">
+
+                    <div>
+                        <div class="card-title">2. Chunks & embeddings</div>
+                        <div class="card-description">
+                            The document is converted into searchable representations.
+                        </div>
+                    </div>
+
+                    <span id="chunkCount">0 chunks</span>
+
+                </div>
+
+                <div class="card-body">
+
+                    <div id="chunkList" class="chunk-list">
+                        <div class="empty">
+                            Process a document to see its chunks.
+                        </div>
+                    </div>
+
+                    <div class="explanation">
+                        <strong>Important distinction:</strong><br>
+                        The chunk is the actual text. The embedding is a numerical
+                        representation of its meaning. The vector database stores
+                        both so that relevant information can later be retrieved.
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- RIGHT SIDE -->
+
+        <div>
+
+            <!-- QUERY -->
+
+            <div class="card">
+
+                <div class="card-header">
+
+                    <div>
+                        <div class="card-title">3. Ask a question</div>
+                        <div class="card-description">
+                            This starts the retrieval phase.
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="card-body">
+
+                    <div class="query-box">
+
+                        <input
+                            id="query"
+                            placeholder="e.g. How quickly must suppliers report incidents?"
+                        >
+
+                        <button class="btn-primary" onclick="runRAG()">
+                            Ask
+                        </button>
+
+                    </div>
+
+                    <div class="progress">
+                        <div id="progressBar" class="progress-bar"></div>
+                    </div>
+
+
+                    <!-- QUERY EMBEDDING -->
+
+                    <div class="stage">
+
+                        <div class="stage-header">
+                            <div class="stage-number">1</div>
+                            <div class="stage-name">
+                                Convert the question into an embedding
+                            </div>
+                        </div>
+
+                        <div class="stage-content">
+
+                            <div id="queryVector" class="embedding">
+                                Waiting for question...
+                            </div>
+
+                            <div class="explanation">
+                                <strong>Why?</strong><br>
+                                Your question is also converted into a vector.
+                                This allows the system to compare the meaning of
+                                your question with the meaning of stored chunks.
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- RETRIEVAL -->
+
+                    <div class="stage">
+
+                        <div class="stage-header">
+                            <div class="stage-number">2</div>
+                            <div class="stage-name">
+                                Similarity search
+                            </div>
+                        </div>
+
+                        <div class="stage-content">
+
+                            <div id="retrievedChunks">
+                                <div class="empty">
+                                    Ask a question to retrieve relevant chunks.
+                                </div>
+                            </div>
+
+                            <div class="explanation">
+                                <strong>This is the "R" in RAG.</strong><br>
+                                Retrieval searches the vector database and selects
+                                chunks that are semantically similar to your question.
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- LLM -->
+
+                    <div class="stage">
+
+                        <div class="stage-header">
+                            <div class="stage-number">3</div>
+                            <div class="stage-name">
+                                Give the retrieved context to the LLM
+                            </div>
+                        </div>
+
+                        <div class="stage-content">
+
+                            <div class="llm-box">
+
+                                <div class="llm-label">
+                                    🤖 LLM receives
+                                </div>
+
+                                <div id="llmContext">
+
+                                    <div class="context-block">
+                                        Question: waiting...
+                                    </div>
+
+                                    <div class="context-block">
+                                        Retrieved context: waiting...
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                            <div class="explanation">
+                                <strong>This is the key concept.</strong><br>
+                                The LLM is not necessarily searching your entire
+                                document. RAG retrieves relevant information first,
+                                then gives that information to the LLM as context.
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- ANSWER -->
+
+                    <div class="stage">
+
+                        <div class="stage-header">
+                            <div class="stage-number">4</div>
+                            <div class="stage-name">
+                                Generate the answer
+                            </div>
+                        </div>
+
+                        <div class="stage-content">
+
+                            <div id="answer" class="answer">
+
+                                <strong>Answer:</strong><br><br>
+
+                                Your answer will appear here after running RAG.
+
+                            </div>
+
+                            <div class="explanation">
+
+                                <strong>Generation ≠ retrieval.</strong><br>
+                                The retrieval system finds useful evidence.
+                                The LLM uses that evidence to generate a natural
+                                language response.
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- LESSON -->
+
+    <section class="lesson">
+
+        <h3>🧠 The big idea to remember</h3>
+
+        <p>
+
+            <span class="highlight">RAG is not the LLM learning your document.</span>
+
+            Your document is chunked, embedded and stored in a searchable
+            vector database. When you ask a question, your question is embedded
+            too. The system retrieves the most relevant chunks and passes those
+            chunks to the LLM.
+
+            The LLM then uses the retrieved context to generate the answer.
+
+            In simple terms:
+
+            <span class="highlight">
+                Store → Search → Retrieve → Give context to LLM → Generate
+            </span>
+
+        </p>
+
+    </section>
+
+</div>
+
+
+<script>
+
+/* =========================================================
+   RAG SIMULATOR
+   ---------------------------------------------------------
+   This is an educational simulation.
+
+   It does NOT call a real embedding model,
+   vector database or LLM.
+
+   Instead it approximates the concepts locally
+   so you can see what each RAG stage does.
+   ========================================================= */
+
+
+/* DEMO DOCUMENT */
+
+const demoDocument = `
+Supplier Security Policy
+
+All critical suppliers must maintain appropriate information security controls.
+
+Critical suppliers must notify the company of a confirmed security incident within 24 hours of becoming aware of the incident.
+
+Suppliers must maintain an information security management system aligned with recognised security standards such as ISO 27001.
+
+Supplier security assessments are performed during onboarding and periodically throughout the supplier lifecycle.
+
+Suppliers must provide evidence of their security controls when requested.
+
+The company may perform remote control validation interviews with suppliers to verify the operation of security controls.
+
+Security incidents must be escalated to the appropriate security contact and tracked until resolution.
+
+Suppliers must maintain business continuity and disaster recovery plans and test them regularly.
+`;
+
+
+/* STATE */
+
+let chunks = [];
+let processed = false;
+
+
+/* FILE UPLOAD */
+
+document.getElementById("fileInput").addEventListener("change", function(e) {
+
+    const file = e.target.files[0];
+
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = function(event) {
+
+        document.getElementById("documentText").value =
+            event.target.result;
+
+    };
+
+    reader.readAsText(file);
+
+});
+
+
+/* LOAD DEMO */
+
+function loadDemo() {
+
+    document.getElementById("documentText").value =
+        demoDocument.trim();
+
+    document.getElementById("query").value =
+        "How quickly must suppliers report security incidents?";
+
+    processDocument();
+}
+
+
+/* CLEAR */
+
+function clearDocument() {
+
+    document.getElementById("documentText").value = "";
+
+    chunks = [];
+    processed = false;
+
+    document.getElementById("chunkList").innerHTML =
+        `<div class="empty">
+            Process a document to see its chunks.
+        </div>`;
+
+    document.getElementById("chunkCount").innerText =
+        "0 chunks";
+
+    document.getElementById("retrievedChunks").innerHTML =
+        `<div class="empty">
+            Ask a question to retrieve relevant chunks.
+        </div>`;
+
+    document.getElementById("queryVector").innerText =
+        "Waiting for question...";
+
+    document.getElementById("answer").innerHTML =
+        `<strong>Answer:</strong><br><br>
+         Your answer will appear here after running RAG.`;
+
+}
+
+
+/* =========================================================
+   STEP 1 — CHUNKING
+   ========================================================= */
+
+function processDocument() {
+
+    const text =
+        document.getElementById("documentText").value.trim();
+
+    if (!text) {
+
+        alert("Please paste or upload a document first.");
+
+        return;
+    }
+
+
+    /*
+       In a production RAG system,
+       chunking could use:
+
+       - token limits
+       - paragraphs
+       - headings
+       - sentence boundaries
+       - overlapping windows
+
+       For this simulator we split by paragraph.
+    */
+
+    const rawChunks =
+        text
+        .split(/\n\s*\n/)
+        .map(x => x.trim())
+        .filter(Boolean);
+
+
+    chunks = rawChunks.map((text, index) => {
+
+        return {
+
+            id: index + 1,
+
+            text: text,
+
+            /*
+               Fake embedding.
+               In a real system this would come from
+               an embedding model.
+            */
+
+            embedding: generateEmbedding(text)
+
+        };
+
+    });
+
+
+    processed = true;
+
+    renderChunks();
+
+}
+
+
+/* =========================================================
+   FAKE EMBEDDING
+   ========================================================= */
+
+function generateEmbedding(text) {
+
+    /*
+       This creates a deterministic-looking vector
+       purely for educational purposes.
+
+       REAL RAG:
+
+       text
+       ↓
+       embedding model
+       ↓
+       [0.021, -0.182, 0.774, ...]
+    */
+
+    const vector = [];
+
+    let seed = 0;
+
+    for (let i = 0; i < text.length; i++) {
+
+        seed =
+            (seed + text.charCodeAt(i) * (i + 1)) % 997;
+
+    }
+
+    for (let i = 0; i < 8; i++) {
+
+        seed =
+            (seed * 9301 + 49297) % 233280;
+
+        vector.push(
+            ((seed / 233280) * 2 - 1).toFixed(3)
+        );
+
+    }
+
+    return vector;
+
+}
+
+
+/* =========================================================
+   RENDER CHUNKS
+   ========================================================= */
+
+function renderChunks() {
+
+    const container =
+        document.getElementById("chunkList");
+
+    container.innerHTML = "";
+
+    chunks.forEach(chunk => {
+
+        const div =
+            document.createElement("div");
+
+        div.className = "chunk";
+
+        div.innerHTML = `
+
+            <div class="chunk-top">
+
+                <div class="chunk-id">
+                    Chunk ${chunk.id}
+                </div>
+
+                <div class="chunk-score">
+                    Stored ✓
+                </div>
+
+            </div>
+
+            <div class="chunk-text">
+                ${escapeHTML(chunk.text)}
+            </div>
+
+            <div class="embedding">
+                embedding: [${chunk.embedding.join(", ")} ...]
+            </div>
+
+        `;
+
+        container.appendChild(div);
+
+    });
+
+
+    document.getElementById("chunkCount").innerText =
+        `${chunks.length} chunks`;
+
+}
+
+
+/* =========================================================
+   STEP 2 — QUERY EMBEDDING
+   ========================================================= */
+
+function embedQuery(query) {
+
+    return generateEmbedding(query);
+
+}
+
+
+/* =========================================================
+   STEP 3 — RETRIEVAL
+   ========================================================= */
+
+function calculateSimilarity(query, text) {
+
+    /*
+       This is NOT a true vector similarity calculation.
+
+       Instead we simulate semantic similarity
+       using keyword overlap.
+
+       Real systems commonly use measures such as:
+
+       cosine similarity
+       dot product
+       Euclidean distance
+    */
+
+    const queryWords =
+        query
+        .toLowerCase()
+        .replace(/[^\w\s]/g, "")
+        .split(/\s+/)
+        .filter(word => word.length > 3);
+
+
+    const textWords =
+        text
+        .toLowerCase()
+        .replace(/[^\w\s]/g, "")
+        .split(/\s+/);
+
+
+    let matches = 0;
+
+    queryWords.forEach(word => {
+
+        if (textWords.includes(word)) {
+
+            matches++;
+
+        }
+
+    });
+
+
+    let score =
+        matches / Math.max(queryWords.length, 1);
+
+
+    /*
+       Add small semantic boosts for
+       conceptually related terms.
+    */
+
+    const concepts = [
+
+        ["incident", "security"],
+        ["report", "notify"],
+        ["quickly", "24"],
+        ["supplier", "suppliers"],
+        ["security", "iso"],
+        ["control", "controls"]
+
+    ];
+
+
+    concepts.forEach(pair => {
+
+        const hasA =
+            query.toLowerCase().includes(pair[0]);
+
+        const hasB =
+            text.toLowerCase().includes(pair[1]);
+
+        if (hasA && hasB) {
+
+            score += 0.18;
+
+        }
+
+    });
+
+
+    return Math.min(score, 1);
+
+}
+
+
+/* =========================================================
+   RUN RAG
+   ========================================================= */
+
+function runRAG() {
+
+    if (!processed) {
+
+        processDocument();
+
+        if (!processed) return;
+
+    }
+
+
+    const query =
+        document.getElementById("query").value.trim();
+
+
+    if (!query) {
+
+        alert("Please enter a question.");
+
+        return;
+
+    }
+
+
+    /* Progress animation */
+
+    const progress =
+        document.getElementById("progressBar");
+
+    progress.style.width = "20%";
+
+
+    /* QUERY EMBEDDING */
+
+    const queryEmbedding =
+        embedQuery(query);
+
+
+    document.getElementById("queryVector").innerText =
+        "query embedding: [" +
+        queryEmbedding.join(", ") +
+        " ...]";
+
+
+    progress.style.width = "40%";
+
+
+    /* RETRIEVE */
+
+    const ranked =
+        chunks
+        .map(chunk => ({
+
+            ...chunk,
+
+            score:
+                calculateSimilarity(query, chunk.text)
+
+        }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3);
+
+
+    renderRetrieved(ranked);
+
+
+    progress.style.width = "65%";
+
+
+    /* SEND CONTEXT TO LLM */
+
+    renderLLMContext(query, ranked);
+
+
+    progress.style.width = "85%";
+
+
+    /* GENERATE ANSWER */
+
+    const answer =
+        generateAnswer(query, ranked);
+
+
+    setTimeout(() => {
+
+        document.getElementById("answer").innerHTML =
+
+            `<strong>Answer:</strong><br><br>
+             ${answer}`;
+
+        progress.style.width = "100%";
+
+    }, 350);
+
+}
+
+
+/* =========================================================
+   RENDER RETRIEVED CHUNKS
+   ========================================================= */
+
+function renderRetrieved(results) {
+
+    const container =
+        document.getElementById("retrievedChunks");
+
+    if (!results.length) {
+
+        container.innerHTML =
+            `<div class="empty">
+                No relevant chunks found.
+            </div>`;
+
+        return;
+
+    }
+
+
+    container.innerHTML = "";
+
+    results.forEach(chunk => {
+
+        const div =
+            document.createElement("div");
+
+        div.className = "chunk";
+
+        div.innerHTML = `
+
+            <div class="chunk-top">
+
+                <div class="chunk-id">
+                    Retrieved · Chunk ${chunk.id}
+                </div>
+
+                <div class="chunk-score">
+                    Similarity ${(chunk.score * 100).toFixed(0)}%
+                </div>
+
+            </div>
+
+            <div class="chunk-text">
+                ${escapeHTML(chunk.text)}
+            </div>
+
+        `;
+
+        container.appendChild(div);
+
+    });
+
+}
+
+
+/* =========================================================
+   LLM CONTEXT
+   ========================================================= */
+
+function renderLLMContext(query, results) {
+
+    const container =
+        document.getElementById("llmContext");
+
+    let html = `
+
+        <div class="context-block">
+
+            <strong>User question:</strong><br>
+
+            ${escapeHTML(query)}
+
+        </div>
+
+        <div class="context-block">
+
+            <strong>Retrieved context:</strong>
+
+        </div>
+    `;
+
+
+    results.forEach(chunk => {
+
+        html += `
+
+            <div class="context-block">
+
+                Chunk ${chunk.id}:<br>
+
+                ${escapeHTML(chunk.text)}
+
+            </div>
+
+        `;
+
+    });
+
+
+    container.innerHTML = html;
+
+}
+
+
+/* =========================================================
+   SIMULATED LLM
+   ========================================================= */
+
+function generateAnswer(query, results) {
+
+    if (!results.length) {
+
+        return "I couldn't find enough relevant information in the retrieved context to answer the question confidently.";
+
+    }
+
+
+    const q =
+        query.toLowerCase();
+
+
+    /*
+       We simulate an LLM here.
+
+       A real LLM would receive:
+
+       SYSTEM PROMPT
+       +
+       USER QUESTION
+       +
+       RETRIEVED CONTEXT
+
+       and generate an answer.
+    */
+
+
+    if (
+        q.includes("how quickly") ||
+        q.includes("how long") ||
+        q.includes("when") ||
+        q.includes("incident")
+    ) {
+
+        const incidentChunk =
+            results.find(c =>
+                c.text.toLowerCase().includes("24 hours")
+            );
+
+        if (incidentChunk) {
+
+            return `
+                According to the retrieved supplier security policy,
+                critical suppliers must notify the company of a confirmed
+                security incident <strong>within 24 hours</strong> of becoming
+                aware of the incident.
+                <br><br>
+                <span style="font-size:11px;color:#667085;">
+                Source: Chunk ${incidentChunk.id}
+                </span>
+            `;
+
+        }
+
+    }
+
+
+    if (
+        q.includes("iso") ||
+        q.includes("standard")
+    ) {
+
+        const isoChunk =
+            results.find(c =>
+                c.text.toLowerCase().includes("iso 27001")
+            );
+
+        if (isoChunk) {
+
+            return `
+                The policy states that critical suppliers should maintain
+                an information security management system aligned with
+                recognised security standards such as
+                <strong>ISO 27001</strong>.
+                <br><br>
+                <span style="font-size:11px;color:#667085;">
+                Source: Chunk ${isoChunk.id}
+                </span>
+            `;
+
+        }
+
+    }
+
+
+    if (
+        q.includes("assessment") ||
+        q.includes("onboarding")
+    ) {
+
+        const assessmentChunk =
+            results.find(c =>
+                c.text.toLowerCase().includes("assessment")
+            );
+
+        if (assessmentChunk) {
+
+            return `
+                Supplier security assessments are performed during
+                <strong>onboarding</strong> and periodically throughout
+                the supplier lifecycle.
+                <br><br>
+                <span style="font-size:11px;color:#667085;">
+                Source: Chunk ${assessmentChunk.id}
+                </span>
+            `;
+
+        }
+
+    }
+
+
+    /*
+       Generic fallback.
+    */
+
+    return `
+        Based on the retrieved information, the most relevant evidence
+        relates to <strong>${escapeHTML(results[0].text.substring(0, 120))}...</strong>
+        <br><br>
+        A production LLM would use the retrieved chunks to formulate a
+        complete answer while grounding its response in that context.
+    `;
+
+}
+
+
+/* =========================================================
+   SECURITY HELPER
+   ========================================================= */
+
+function escapeHTML(str) {
+
+    return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+
+}
+
+
+/* START WITH DEMO */
+
+loadDemo();
+
+</script>
+
+</body>
+</html>
+```
