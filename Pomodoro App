@@ -1,0 +1,458 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  PresetDuration,
+  TimerMode,
+  TimerStatus,
+  DailyStats,
+  TimerSettings,
+  ParkedThought,
+} from './types';
+import { FOCUS_PRESETS, formatTime } from './utils/formatTime';
+import { soundEngine } from './utils/audio';
+import { requestWakeLock, releaseWakeLock } from './utils/wakeLock';
+import {
+  loadDailyStats,
+  recordCompletedSession,
+  loadSettings,
+  saveSettings,
+  loadParkedThoughts,
+  saveParkedThoughts,
+} from './utils/storage';
+
+import { Header } from './components/Header';
+import { TimerCard } from './components/TimerCard';
+import { DurationSelector } from './components/DurationSelector';
+import { BreakCard } from './components/BreakCard';
+import { SessionStats } from './components/SessionStats';
+import {
+  QuickThoughtInput,
+  ParkedThoughtsModal,
+} from './components/ParkedThoughts';
+import {
+  KeyboardShortcutsHint,
+  KeyboardShortcutsModal,
+} from './components/KeyboardShortcutsHint';
+
+export default function App() {
+  // Load persistent initial settings, stats, & parked thoughts
+  const [settings, setSettings] = useState<TimerSettings>(() => loadSettings());
+  const [dailyStats, setDailyStats] = useState<DailyStats>(() => loadDailyStats());
+  const [thoughts, setThoughts] = useState<ParkedThought[]>(() => loadParkedThoughts());
+
+  // Core Timer State
+  const [selectedPreset, setSelectedPreset] = useState<PresetDuration>(settings.selectedPreset);
+  const [mode, setMode] = useState<TimerMode>('focus');
+  const [status, setStatus] = useState<TimerStatus>('ready');
+
+  const presetConfig = FOCUS_PRESETS[selectedPreset];
+  const initialSeconds = mode === 'break' ? presetConfig.breakMinutes * 60 : presetConfig.minutes * 60;
+
+  const [totalSeconds, setTotalSeconds] = useState<number>(initialSeconds);
+  const [remainingSeconds, setRemainingSeconds] = useState<number>(initialSeconds);
+  const [intention, setIntention] = useState<string>(settings.lastIntention || '');
+
+  // Modals & UI States
+  const [showBreakOffer, setShowBreakOffer] = useState<boolean>(false);
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState<boolean>(false);
+  const [isThoughtsModalOpen, setIsThoughtsModalOpen] = useState<boolean>(false);
+
+  // Thought Handlers
+  const handleAddThought = (text: string) => {
+    const newThought: ParkedThought = {
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      text,
+      timestamp: Date.now(),
+      completed: false,
+    };
+    const updated = [newThought, ...thoughts];
+    setThoughts(updated);
+    saveParkedThoughts(updated);
+  };
+
+  const handleToggleThought = (id: string) => {
+    const updated = thoughts.map((t) =>
+      t.id === id ? { ...t, completed: !t.completed } : t
+    );
+    setThoughts(updated);
+    saveParkedThoughts(updated);
+  };
+
+  const handleDeleteThought = (id: string) => {
+    const updated = thoughts.filter((t) => t.id !== id);
+    setThoughts(updated);
+    saveParkedThoughts(updated);
+  };
+
+  const handleClearCompletedThoughts = () => {
+    const updated = thoughts.filter((t) => !t.completed);
+    setThoughts(updated);
+    saveParkedThoughts(updated);
+  };
+
+  // Time calculation refs for drift-free accuracy
+  const endTimeRef = useRef<number | null>(null);
+  const pausedRemainingRef = useRef<number>(initialSeconds);
+  const intervalRef = useRef<number | null>(null);
+
+  // Helper to clear timer loop
+  const stopInterval = useCallback(() => {
+    if (intervalRef.current !== null) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }, []);
+
+  // Update total/remaining seconds when preset or mode changes (if in ready state)
+  useEffect(() => {
+    if (status === 'ready' || status === 'break_ready') {
+      const secs = mode === 'break' ? presetConfig.breakMinutes * 60 : presetConfig.minutes * 60;
+      setTotalSeconds(secs);
+      setRemainingSeconds(secs);
+      pausedRemainingRef.current = secs;
+    }
+  }, [selectedPreset, mode, presetConfig, status]);
+
+  // Document Title updates with remaining time
+  useEffect(() => {
+    if (status === 'running' || status === 'paused' || status === 'break_running') {
+      const label = mode === 'break' ? 'Break' : 'Focus';
+      document.title = `(${formatTime(remainingSeconds)}) ${label} - Pomodoro Focus App`;
+    } else if (status === 'completed' || status === 'break_completed') {
+      document.title = `Session Complete! - Pomodoro Focus App`;
+    } else {
+      document.title = `Pomodoro Focus App - Minimal Focus Timer`;
+    }
+  }, [remainingSeconds, status, mode]);
+
+  // Synchronize Intention & Preset settings into localStorage
+  const handleIntentionChange = (newVal: string) => {
+    setIntention(newVal);
+    saveSettings({ lastIntention: newVal });
+  };
+
+  const handleToggleSound = () => {
+    const nextVal = !settings.soundEnabled;
+    setSettings((prev) => ({ ...prev, soundEnabled: nextVal }));
+    saveSettings({ soundEnabled: nextVal });
+    if (nextVal) {
+      soundEngine.playClickSound();
+    }
+  };
+
+  const handleRequestNotifications = async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      alert('Desktop notifications are not supported by your browser.');
+      return;
+    }
+
+    if (Notification.permission === 'granted') {
+      const nextVal = !settings.notificationsEnabled;
+      setSettings((prev) => ({ ...prev, notificationsEnabled: nextVal }));
+      saveSettings({ notificationsEnabled: nextVal });
+    } else if (Notification.permission !== 'denied') {
+      const result = await Notification.requestPermission();
+      if (result === 'granted') {
+        setSettings((prev) => ({ ...prev, notificationsEnabled: true }));
+        saveSettings({ notificationsEnabled: true });
+        new Notification('Pomodoro Focus App Notifications Enabled', {
+          body: 'You will receive subtle notifications when focus & break sessions complete.',
+        });
+      }
+    } else {
+      alert('Notification permissions were previously denied in browser settings.');
+    }
+  };
+
+  // Session Completion Handler
+  const handleCompleteSession = useCallback(() => {
+    stopInterval();
+    releaseWakeLock();
+
+    setRemainingSeconds(0);
+    const isFocus = mode === 'focus';
+
+    if (isFocus) {
+      setStatus('completed');
+      // Record completed session in localStorage stats
+      const updated = recordCompletedSession(presetConfig.minutes, 'focus', intention);
+      setDailyStats(updated);
+
+      // Play completion chime
+      if (settings.soundEnabled) {
+        soundEngine.playCompletionChime();
+      }
+
+      // Show Desktop Notification if granted
+      if (settings.notificationsEnabled && Notification.permission === 'granted') {
+        new Notification('Focus Session Complete!', {
+          body: `Great job focusing on "${intention || presetConfig.subtitle}" for ${presetConfig.minutes} mins.`,
+          icon: '/favicon.ico',
+        });
+      }
+
+      // Offer Break option
+      setShowBreakOffer(true);
+    } else {
+      setStatus('break_completed');
+      if (settings.soundEnabled) {
+        soundEngine.playBreakChime();
+      }
+
+      if (settings.notificationsEnabled && Notification.permission === 'granted') {
+        new Notification('Break Complete!', {
+          body: 'Ready to start your next focus session?',
+        });
+      }
+    }
+  }, [mode, presetConfig, intention, settings, stopInterval]);
+
+  // Main tick updater checking target timestamp
+  const tick = useCallback(() => {
+    if (!endTimeRef.current) return;
+    const now = Date.now();
+    const diff = Math.max(0, Math.ceil((endTimeRef.current - now) / 1000));
+    setRemainingSeconds(diff);
+
+    if (diff <= 0) {
+      handleCompleteSession();
+    }
+  }, [handleCompleteSession]);
+
+  // Timer Start
+  const startTimer = useCallback(() => {
+    if (settings.soundEnabled) soundEngine.playClickSound();
+
+    const secs = remainingSeconds > 0 ? remainingSeconds : totalSeconds;
+    endTimeRef.current = Date.now() + secs * 1000;
+
+    setStatus(mode === 'break' ? 'break_running' : 'running');
+    setShowBreakOffer(false);
+
+    requestWakeLock();
+
+    stopInterval();
+    intervalRef.current = window.setInterval(tick, 200);
+  }, [remainingSeconds, totalSeconds, mode, settings.soundEnabled, tick, stopInterval]);
+
+  // Timer Pause
+  const pauseTimer = useCallback(() => {
+    if (settings.soundEnabled) soundEngine.playClickSound();
+
+    stopInterval();
+    releaseWakeLock();
+
+    pausedRemainingRef.current = remainingSeconds;
+    setStatus('paused');
+  }, [remainingSeconds, settings.soundEnabled, stopInterval]);
+
+  // Timer Resume
+  const resumeTimer = useCallback(() => {
+    startTimer();
+  }, [startTimer]);
+
+  // Timer Reset
+  const resetTimer = useCallback(
+    (newMode: TimerMode = 'focus') => {
+      if (settings.soundEnabled) soundEngine.playClickSound();
+
+      stopInterval();
+      releaseWakeLock();
+
+      setMode(newMode);
+      const secs = newMode === 'break' ? presetConfig.breakMinutes * 60 : presetConfig.minutes * 60;
+      setTotalSeconds(secs);
+      setRemainingSeconds(secs);
+      pausedRemainingRef.current = secs;
+      endTimeRef.current = null;
+      setStatus(newMode === 'break' ? 'break_ready' : 'ready');
+      setShowBreakOffer(false);
+    },
+    [presetConfig, settings.soundEnabled, stopInterval]
+  );
+
+  // Preset Selection
+  const handleSelectPreset = (newPreset: PresetDuration) => {
+    if (newPreset === selectedPreset) return;
+
+    setSelectedPreset(newPreset);
+    saveSettings({ selectedPreset: newPreset });
+
+    // If currently running or paused, reset with new duration
+    stopInterval();
+    releaseWakeLock();
+
+    setMode('focus');
+    const newConfig = FOCUS_PRESETS[newPreset];
+    const secs = newConfig.minutes * 60;
+    setTotalSeconds(secs);
+    setRemainingSeconds(secs);
+    pausedRemainingRef.current = secs;
+    endTimeRef.current = null;
+    setStatus('ready');
+    setShowBreakOffer(false);
+  };
+
+  // Start Optional Break
+  const handleStartBreak = () => {
+    const secs = presetConfig.breakMinutes * 60;
+    setMode('break');
+    setTotalSeconds(secs);
+    setRemainingSeconds(secs);
+    pausedRemainingRef.current = secs;
+    endTimeRef.current = Date.now() + secs * 1000;
+    setStatus('break_running');
+    setShowBreakOffer(false);
+
+    if (settings.soundEnabled) soundEngine.playClickSound();
+    requestWakeLock();
+
+    stopInterval();
+    intervalRef.current = window.setInterval(tick, 200);
+  };
+
+  const handleSkipBreak = () => {
+    resetTimer('focus');
+  };
+
+  // Re-acquire wake lock & recalculate time if tab becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && (status === 'running' || status === 'break_running')) {
+        requestWakeLock();
+        tick();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [status, tick]);
+
+  // Keyboard Shortcuts Listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore key events when typing inside input elements
+      const targetTag = (e.target as HTMLElement)?.tagName?.toUpperCase();
+      if (targetTag === 'INPUT' || targetTag === 'TEXTAREA') {
+        return;
+      }
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (status === 'running' || status === 'break_running') {
+          pauseTimer();
+        } else if (status === 'paused') {
+          resumeTimer();
+        } else {
+          startTimer();
+        }
+      } else if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        resetTimer(mode);
+      } else if (e.key === '1') {
+        e.preventDefault();
+        handleSelectPreset(25);
+      } else if (e.key === '2') {
+        e.preventDefault();
+        handleSelectPreset(50);
+      } else if (e.key === '3') {
+        e.preventDefault();
+        handleSelectPreset(75);
+      } else if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        setIsThoughtsModalOpen((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [status, mode, pauseTimer, resumeTimer, startTimer, resetTimer, handleSelectPreset]);
+
+  return (
+    <div className="min-h-screen bg-[#ebeae5] text-zinc-900 font-sans flex flex-col justify-between selection:bg-lime-400 selection:text-zinc-950 transition-colors">
+      {/* Upper Navigation & App Title */}
+      <Header
+        soundEnabled={settings.soundEnabled}
+        onToggleSound={handleToggleSound}
+        notificationsEnabled={settings.notificationsEnabled}
+        onRequestNotifications={handleRequestNotifications}
+        onOpenShortcutsModal={() => setIsShortcutsModalOpen(true)}
+        parkedCount={thoughts.length}
+        onOpenParkedThoughts={() => setIsThoughtsModalOpen(true)}
+      />
+
+      {/* Center Focus Canvas */}
+      <main className="w-full max-w-xl mx-auto px-4 py-2 flex-1 flex flex-col justify-center items-center">
+        {/* Main Hero Timer Card */}
+        <TimerCard
+          status={status}
+          mode={mode}
+          preset={presetConfig}
+          remainingSeconds={remainingSeconds}
+          totalSeconds={totalSeconds}
+          formattedTime={formatTime(remainingSeconds)}
+          intention={intention}
+          onChangeIntention={handleIntentionChange}
+          onStart={startTimer}
+          onPause={pauseTimer}
+          onResume={resumeTimer}
+          onReset={() => resetTimer('focus')}
+          onStartBreak={handleStartBreak}
+          onSkipBreak={handleSkipBreak}
+        />
+
+        {/* Quick Distraction / Thought Note Bar */}
+        <QuickThoughtInput
+          onAddThought={handleAddThought}
+          parkedCount={thoughts.length}
+          onOpenModal={() => setIsThoughtsModalOpen(true)}
+        />
+
+        {/* Post-Session Break Offer Banner */}
+        {showBreakOffer && (
+          <BreakCard
+            breakMinutes={presetConfig.breakMinutes}
+            onStartBreak={handleStartBreak}
+            onSkipBreak={handleSkipBreak}
+          />
+        )}
+
+        {/* Preset Duration Selector */}
+        <DurationSelector
+          selectedPreset={selectedPreset}
+          onSelectPreset={handleSelectPreset}
+          isDisabled={status === 'running' || status === 'break_running'}
+        />
+
+        {/* Daily Stats Overview */}
+        <SessionStats stats={dailyStats} />
+      </main>
+
+      {/* Footer & Keyboard Shortcuts Hint */}
+      <footer className="w-full max-w-xl mx-auto px-4 pb-4">
+        <KeyboardShortcutsHint onOpenModal={() => setIsShortcutsModalOpen(true)} />
+      </footer>
+
+      {/* Keyboard Shortcuts Modal */}
+      <KeyboardShortcutsModal
+        isOpen={isShortcutsModalOpen}
+        onClose={() => setIsShortcutsModalOpen(false)}
+      />
+
+      {/* Parked Thoughts & Notes Modal */}
+      <ParkedThoughtsModal
+        isOpen={isThoughtsModalOpen}
+        onClose={() => setIsThoughtsModalOpen(false)}
+        thoughts={thoughts}
+        onAddThought={handleAddThought}
+        onToggleThought={handleToggleThought}
+        onDeleteThought={handleDeleteThought}
+        onClearCompleted={handleClearCompletedThoughts}
+      />
+    </div>
+  );
+}
+
